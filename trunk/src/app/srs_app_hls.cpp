@@ -1324,7 +1324,11 @@ srs_error_t SrsHls::on_video(SrsSharedPtrMessage* shared_video, SrsFormat* forma
     }
     
     srs_assert(format->vcodec);
-    if ((format->vcodec->id != SrsVideoCodecIdAVC) && (format->vcodec->id != SrsVideoCodecIdHEVC)) {
+    bool ignore_frame = (format->vcodec->id != SrsVideoCodecIdAVC);
+#ifdef SRS_H265
+    ignore_frame = ignore_frame && (format->vcodec->id != SrsVideoCodecIdHEVC);
+#endif
+    if (ignore_frame) {
         return err;
     }
     

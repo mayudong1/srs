@@ -263,10 +263,12 @@ public:
      * check codec h264.
      */
     static bool h264(char* data, int size);
+#ifdef SRS_H265
     /**
      * check codec hevc.
      */
     static bool hevc(char* data, int size);
+#endif
     /**
      * check the video RTMP/flv header info,
      * @return true if video RTMP/flv header is ok.
@@ -403,7 +405,7 @@ enum SrsAvcNaluType
 };
 std::string srs_avc_nalu2str(SrsAvcNaluType nalu_type);
 
-
+#ifdef SRS_H265
 enum SrsHevcNaluType
 {
 	NAL_UNIT_CODED_SLICE_TRAIL_N = 0,
@@ -475,6 +477,7 @@ enum SrsHevcNaluType
 
 //for nalu data first byte
 #define HEVC_NALU_TYPE(code) (SrsHevcNaluType)((code & 0x7E)>>1)
+#endif
 
 /**
  * Table 7-6 – Name association to slice_type
@@ -685,19 +688,20 @@ public:
     virtual bool is_aac_codec_ok();
 };
 
-typedef struct HEVCNalData_S {
+#ifdef SRS_H265
+struct HEVCNalData {
     uint16_t nalUnitLength;
     std::vector<uint8_t>  nalUnitData;
-} HEVCNalData;
+};
 
-typedef struct HVCCNALUnit_S {
+struct HVCCNALUnit {
     uint8_t  array_completeness;
     uint8_t  NAL_unit_type;
     uint16_t numNalus;
     std::vector<HEVCNalData> nalData_vec;
-} HVCCNALUnit;
+};
 
-typedef struct HEVCDecoderConfigurationRecord_S {
+struct HEVCDecoderConfigurationRecord {
     uint8_t  configurationVersion;
     uint8_t  general_profile_space;
     uint8_t  general_tier_flag;
@@ -716,7 +720,8 @@ typedef struct HEVCDecoderConfigurationRecord_S {
     uint8_t  temporalIdNested;
     uint8_t  lengthSizeMinusOne;
     std::vector<HVCCNALUnit> nalu_vec;
-} HEVCDecoderConfigurationRecord;
+};
+#endif
 
 /**
  * The video codec info.
@@ -753,9 +758,10 @@ public://H264
 public:
     // the avc payload format.
     SrsAvcPayloadFormat payload_format;
+#ifdef SRS_H265
 public:
     HEVCDecoderConfigurationRecord _hevcDecConfRecord;
-
+#endif
 public:
     SrsVideoCodecConfig();
     virtual ~SrsVideoCodecConfig();
@@ -884,6 +890,7 @@ private:
 private:
     srs_error_t  (SrsFormat::*demux_ibmf_format_func)(SrsBuffer* stream);
 
+#ifdef SRS_H265
 private:
     // Parse the hevc vps/sps/pps
     virtual srs_error_t hevc_demux_hvcc(SrsBuffer* stream);
@@ -891,6 +898,7 @@ private:
     virtual srs_error_t hevc_vps_data(char*& data_p, int& len);
     virtual srs_error_t hevc_pps_data(char*& data_p, int& len);
     virtual srs_error_t hevc_sps_data(char*& data_p, int& len);
+#endif
 
 private:
     // Parse the H.264/hevc NALUs.

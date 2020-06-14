@@ -124,8 +124,11 @@ bool SrsFlvVideo::keyframe(char* data, int size)
 
 bool SrsFlvVideo::sh(char* data, int size)
 {
-    // sequence header for h264/hevc
-    if (!h264(data, size) && !hevc(data, size)) {
+    bool ignore_frame = !h264(data, size);
+#ifdef SRS_H265
+    ignore_frame = ignore_frame && !hevc(data, size);
+#endif
+    if (ignore_frame) {
         return false;
     }
     
@@ -156,6 +159,7 @@ bool SrsFlvVideo::h264(char* data, int size)
     return codec_id == SrsVideoCodecIdAVC;
 }
 
+#ifdef SRS_H265
 bool SrsFlvVideo::hevc(char* data, int size)
 {
     // 1bytes required.
@@ -168,6 +172,7 @@ bool SrsFlvVideo::hevc(char* data, int size)
     
     return codec_id == SrsVideoCodecIdHEVC;
 }
+#endif
 
 bool SrsFlvVideo::acceptable(char* data, int size)
 {
@@ -183,8 +188,12 @@ bool SrsFlvVideo::acceptable(char* data, int size)
     if (frame_type < 1 || frame_type > 5) {
         return false;
     }
-    
-    if (codec_id < 2 || codec_id > SrsVideoCodecIdHEVC) {
+
+    bool ignore_frame = codec_id < 2;
+#ifdef SRS_H265
+    ignore_frame = ignore_frame || codec_id > SrsVideoCodecIdHEVC;
+#endif
+    if (ignore_frame) {
         return false;
     }
     
@@ -564,7 +573,8 @@ srs_error_t SrsVideoFrame::add_sample(char* bytes, int size)
     if ((err = SrsFrame::add_sample(bytes, size)) != srs_success) {
         return srs_error_wrap(err, "add frame");
     }
-    
+
+#ifdef SRS_H265
     if (vcodec()->id == SrsVideoCodecIdAVC) {
         // for video, parse the nalu type, set the IDR flag.
         SrsAvcNaluType nal_unit_type = (SrsAvcNaluType)(bytes[0] & 0x1f);
@@ -581,6 +591,7 @@ srs_error_t SrsVideoFrame::add_sample(char* bytes, int size)
             first_nalu_type = nal_unit_type;
         }
     }
+#endif
     
     return err;
 }
@@ -678,7 +689,11 @@ srs_error_t SrsFormat::on_video(int64_t timestamp, char* data, int size)
     SrsVideoCodecId codec_id = (SrsVideoCodecId)(frame_type & 0x0f);
 
     // TODO: Support other codecs.
-    if ((codec_id != SrsVideoCodecIdAVC) && (codec_id != SrsVideoCodecIdHEVC)) {
+    bool ignore_frame = (codec_id != SrsVideoCodecIdAVC);
+#ifdef SRS_H265
+    ignore_frame = ignore_frame && (codec_id != SrsVideoCodecIdHEVC);
+#endif
+    if (ignore_frame) {
         return err;
     }
     
@@ -749,7 +764,11 @@ srs_error_t SrsFormat::video_avc_demux(SrsBuffer* stream, int64_t timestamp)
     }
     
     // support h.264/avc
-    if ((codec_id != SrsVideoCodecIdAVC) && (codec_id != SrsVideoCodecIdHEVC)) {
+    bool ignore_frame = (codec_id != SrsVideoCodecIdAVC);
+#ifdef SRS_H265
+    ignore_frame = ignore_frame  && (codec_id != SrsVideoCodecIdHEVC);
+#endif
+    if (ignore_frame) {
         return srs_error_new(ERROR_HLS_DECODE_ERROR, "avc only support video h.264/avc, actual=%d", codec_id);
     }
     vcodec->id = codec_id;
@@ -768,7 +787,7 @@ srs_error_t SrsFormat::video_avc_demux(SrsBuffer* stream, int64_t timestamp)
     // Update the RAW AVC data.
     raw = stream->data() + stream->pos();
     nb_raw = stream->size() - stream->pos();
-    
+
     if (codec_id == SrsVideoCodecIdAVC) {
         if (avc_packet_type == SrsVideoAvcFrameTraitSequenceHeader) {
             // TODO: FIXME: Maybe we should ignore any error for parsing sps/pps.
@@ -783,6 +802,8 @@ srs_error_t SrsFormat::video_avc_demux(SrsBuffer* stream, int64_t timestamp)
             // ignored.
         }
     }
+
+#ifdef SRS_H265
     // analyze hevc here
     if (codec_id == SrsVideoCodecIdHEVC) {
         if (avc_packet_type == SrsVideoAvcFrameTraitSequenceHeader) {
@@ -799,10 +820,12 @@ srs_error_t SrsFormat::video_avc_demux(SrsBuffer* stream, int64_t timestamp)
             // ignore
         }
     }
+#endif
     
     return err;
 }
 
+#ifdef SRS_H265
 // Parse the hevc vps/sps/pps
 srs_error_t SrsFormat::hevc_demux_hvcc(SrsBuffer* stream) {
     const int HEVC_MIN_SIZE = 23;//from configurationVersion to numOfArrays
@@ -929,6 +952,7 @@ temporalIdNested:%d, lengthSizeMinusOne:%d, numOfArrays:%d",
     }
     return srs_success;
 }
+#endif
 
 // For media server, we don't care the codec, so we just try to parse sps-pps, and we could ignore any error if fail.
 // LCOV_EXCL_START
@@ -1255,8 +1279,10 @@ srs_error_t SrsFormat::video_nalu_demux(SrsBuffer* stream)
 
     if (vcodec->id == SrsVideoCodecIdAVC) {
         demux_ibmf_format_func = &SrsFormat::avc_demux_ibmf_format;
+#ifdef SRS_H265
     } else if (vcodec->id == SrsVideoCodecIdHEVC) {
         demux_ibmf_format_func = &SrsFormat::hevc_demux_ibmf_format;
+#endif
     } else {
         return srs_error_wrap(err, "avc demux ibmf");
     }
@@ -1309,6 +1335,7 @@ srs_error_t SrsFormat::video_nalu_demux(SrsBuffer* stream)
     return err;
 }
 
+#ifdef SRS_H265
 srs_error_t SrsFormat::hevc_vps_data(char*& data_p, int& len) {
     srs_error_t err = srs_success;
 
@@ -1423,6 +1450,7 @@ srs_error_t SrsFormat::hevc_demux_ibmf_format(SrsBuffer* stream) {
     
     return err;
 }
+#endif
 
 srs_error_t SrsFormat::avc_demux_annexb_format(SrsBuffer* stream)
 {
