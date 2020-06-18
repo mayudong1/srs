@@ -573,8 +573,8 @@ if [ ! -f ${SRS_OBJS}/srtp2/lib/libsrtp2.a ]; then echo "Build srtp2 static lib 
 #####################################################################################
 # sctp, for WebRTC datachannel
 #####################################################################################
-if [[ $SRS_RTC == YES ]]; then
-    if [[ -f ${SRS_OBJS}/${SRS_PLATFORM}/opus/lib/libusrsctp.a ]]; then
+if [[ $SRS_SCTP == YES ]]; then
+    if [[ -f ${SRS_OBJS}/${SRS_PLATFORM}/sctp/lib/libusrsctp.a ]]; then
         echo "The usrsctp is ok.";
     else
         echo "Building usrsctp.";

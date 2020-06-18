@@ -141,7 +141,7 @@ if [[ $SRS_RTC == YES ]]; then
   LibSrtpRoot="${SRS_OBJS_DIR}/srtp2/include"; LibSrtpFile="${SRS_OBJS_DIR}/srtp2/lib/libsrtp2.a"
 fi
 # sctp
-if [[ $SRS_RTC == YES ]]; then
+if [[ $SRS_SCTP == YES ]]; then
   LibSctpRoot="${SRS_OBJS_DIR}/sctp/include"; LibSctpFile="${SRS_OBJS_DIR}/sctp/lib/libusrsctp.a"
 fi
 # FFMPEG for WebRTC transcoding, such as aac to opus.
