@@ -59,7 +59,9 @@ class SrsRtpNackForReceiver;
 class SrsRtpIncommingVideoFrame;
 class SrsRtpRingBuffer;
 class SrsRtcConsumer;
+#ifdef SRS_SCTP
 class SrsSctp;
+#endif
 
 const uint8_t kSR   = 200;
 const uint8_t kRR   = 201;
@@ -113,8 +115,9 @@ class SrsRtcDtls
 {
 private:
     SrsRtcSession* session_;
+#ifdef SRS_SCTP
     SrsSctp* sctp_;
-
+#endif
     SSL* dtls;
     BIO* bio_in;
     BIO* bio_out;

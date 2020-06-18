@@ -57,7 +57,9 @@ using namespace std;
 #include <srs_service_st.hpp>
 #include <srs_app_rtc_server.hpp>
 #include <srs_app_rtc_source.hpp>
+#ifdef SRS_SCTP
 #include <srs_app_sctp.hpp>
+#endif
 
 // TODO: FIXME: Move to utility.
 string gen_random_str(int len)
@@ -114,8 +116,9 @@ SrsNtp SrsNtp::to_time_ms(uint64_t ntp)
 SrsRtcDtls::SrsRtcDtls(SrsRtcSession* s)
 {
     session_ = s;
+#ifdef SRS_SCTP
     sctp_ = NULL;
-
+#endif
     dtls = NULL;
     bio_in = NULL;
     bio_out = NULL;
@@ -145,7 +148,9 @@ SrsRtcDtls::~SrsRtcDtls()
         srtp_dealloc(srtp_recv);
     }
 
+#ifdef SRS_SCTP
     srs_freep(sctp_);
+#endif
 }
 
 srs_error_t SrsRtcDtls::initialize(SrsRequest* r)
@@ -280,12 +285,15 @@ srs_error_t SrsRtcDtls::on_dtls_application_data(const char* buf, const int nb_b
 {
     srs_error_t err = srs_success;
 
+#ifdef SRS_SCTP
     if (sctp_ == NULL) {
         sctp_ = new SrsSctp(this);
         sctp_->connect_to_class();
     }
 
     sctp_->feed(buf, nb_buf);
+#endif
+
     return err;
 }
 

@@ -608,6 +608,9 @@ function apply_user_detail_options() {
         echo "Enable SCTP for RTC"
         SRS_SCTP=YES
     fi
+    if [[ $SRS_SCTP == RESERVED ]]; then
+        SRS_SCTP=NO
+    fi
 }
 apply_user_detail_options
 
