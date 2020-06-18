@@ -57,6 +57,7 @@ using namespace std;
 #include <srs_service_st.hpp>
 #include <srs_app_rtc_server.hpp>
 #include <srs_app_rtc_source.hpp>
+#include <srs_app_sctp.hpp>
 
 // TODO: FIXME: Move to utility.
 string gen_random_str(int len)
@@ -110,10 +111,10 @@ SrsNtp SrsNtp::to_time_ms(uint64_t ntp)
     return srs_ntp;
 }
 
-
 SrsRtcDtls::SrsRtcDtls(SrsRtcSession* s)
 {
     session_ = s;
+    sctp_ = NULL;
 
     dtls = NULL;
     bio_in = NULL;
@@ -143,6 +144,8 @@ SrsRtcDtls::~SrsRtcDtls()
     if (srtp_recv) {
         srtp_dealloc(srtp_recv);
     }
+
+    srs_freep(sctp_);
 }
 
 srs_error_t SrsRtcDtls::initialize(SrsRequest* r)
@@ -250,7 +253,7 @@ srs_error_t SrsRtcDtls::on_dtls(char* data, int nb_data)
             int nb = SSL_read(dtls, dtls_read_buf, sizeof(dtls_read_buf));
 
             if (nb > 0) {
-                if ((err =on_dtls_application_data(dtls_read_buf, nb)) != srs_success) {
+                if ((err = on_dtls_application_data(dtls_read_buf, nb)) != srs_success) {
                     return srs_error_wrap(err, "dtls application data process");
                 }
             }
@@ -277,7 +280,32 @@ srs_error_t SrsRtcDtls::on_dtls_application_data(const char* buf, const int nb_b
 {
     srs_error_t err = srs_success;
 
-    // TODO: process SCTP protocol(WebRTC datachannel support)
+    if (sctp_ == NULL) {
+        sctp_ = new SrsSctp(this);
+        sctp_->connect_to_class();
+    }
+
+    sctp_->feed(buf, nb_buf);
+    return err;
+}
+
+srs_error_t SrsRtcDtls::send(const char* data, const int len)
+{
+    srs_error_t err = srs_success;
+
+	int ret = SSL_write(dtls, data, len);
+    if (ret <= 0) {
+        return srs_error_new(ERROR_RTC_DTLS, "SSL_write");
+    }
+
+    uint8_t dtls_send_buffer[4096];
+
+    while (BIO_ctrl_pending(bio_out) > 0) {
+        int dtls_send_bytes = BIO_read(bio_out, dtls_send_buffer, sizeof(dtls_send_buffer));
+        if (dtls_send_bytes > 0) {
+        	session_->sendonly_skt->sendto(dtls_send_buffer, dtls_send_bytes, 0);
+        }
+    }
 
     return err;
 }

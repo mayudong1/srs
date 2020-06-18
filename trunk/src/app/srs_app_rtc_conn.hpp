@@ -59,6 +59,7 @@ class SrsRtpNackForReceiver;
 class SrsRtpIncommingVideoFrame;
 class SrsRtpRingBuffer;
 class SrsRtcConsumer;
+class SrsSctp;
 
 const uint8_t kSR   = 200;
 const uint8_t kRR   = 201;
@@ -112,6 +113,7 @@ class SrsRtcDtls
 {
 private:
     SrsRtcSession* session_;
+    SrsSctp* sctp_;
 
     SSL* dtls;
     BIO* bio_in;
@@ -124,7 +126,6 @@ private:
     srtp_t srtp_recv;
 
     bool handshake_done;
-
 public:
     SrsRtcDtls(SrsRtcSession* s);
     virtual ~SrsRtcDtls();
@@ -134,6 +135,8 @@ public:
     srs_error_t on_dtls(char* data, int nb_data);
     srs_error_t on_dtls_handshake_done();
     srs_error_t on_dtls_application_data(const char* data, const int len);
+
+    srs_error_t send(const char* data, const int len);
 public:
     srs_error_t protect_rtp(char* protected_buf, const char* ori_buf, int& nb_protected_buf);
     srs_error_t protect_rtp2(void* rtp_hdr, int* len_ptr);
