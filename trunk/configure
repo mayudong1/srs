@@ -344,7 +344,7 @@ if [[ $SRS_RTC == YES ]]; then
     ModuleLibFiles+=("${LibFfmpegFile[*]}" ${LibSrtpFile})
 fi
 if [[ $SRS_SCTP == YES ]]; then
-    ModuleLibFiles+=(${LibSctpRoot})
+    ModuleLibFiles+=(${LibSctpFile})
 fi
 if [[ $SRS_SRT == YES ]]; then
     ModuleLibFiles+=("${LibSRTfile[*]}")
@@ -373,7 +373,7 @@ if [[ $SRS_RTC == YES ]]; then
     ModuleLibFiles+=("${LibFfmpegFile[*]}" ${LibSrtpFile})
 fi
 if [[ $SRS_SCTP == YES ]]; then
-    ModuleLibFiles+=(${LibSctpRoot})
+    ModuleLibFiles+=(${LibSctpFile})
 fi
 #
 for SRS_MODULE in ${SRS_MODULES[*]}; do
@@ -408,7 +408,7 @@ if [ $SRS_UTEST = YES ]; then
         ModuleLibFiles+=("${LibFfmpegFile[*]}" ${LibSrtpFile})
     fi
     if [[ $SRS_SCTP == YES ]]; then
-        ModuleLibFiles+=(${LibSctpRoot})
+        ModuleLibFiles+=(${LibSctpFile})
     fi
     if [[ $SRS_SRT == YES ]]; then
         ModuleLibFiles+=("${LibSRTfile[*]}")

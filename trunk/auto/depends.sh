@@ -580,7 +580,11 @@ if [[ $SRS_SCTP == YES ]]; then
         echo "Building usrsctp.";
         (
             rm -rf ${SRS_OBJS}/${SRS_PLATFORM}/usrsctp && cd ${SRS_OBJS}/${SRS_PLATFORM} &&
-            tar xf ../../3rdparty/usrsctp.tar.gz && cd usrsctp &&
+            mkdir -p usrsctp && cd usrsctp && ln -sf ../../../3rdparty/usrsctp .src &&
+            _srs_link_file .src/ ./ ./ &&
+            mkdir -p usrsctplib && _srs_link_file .src/usrsctplib usrsctplib/ ../ &&
+            mkdir -p usrsctplib/netinet && _srs_link_file .src/usrsctplib/netinet usrsctplib/netinet/ ../../ &&
+            mkdir -p usrsctplib/netinet6 && _srs_link_file .src/usrsctplib/netinet6 usrsctplib/netinet6/ ../../ &&
             ./bootstrap && ./configure --prefix=`pwd`/_release --enable-static --disable-shared && make ${SRS_JOBS} && make install
             cd .. && rm -rf sctp && ln -sf usrsctp/_release sctp
         )
