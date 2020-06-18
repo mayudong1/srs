@@ -79,7 +79,7 @@ const int kSctpPort = 5000;
 const int kMaxInSteam = 128;
 const int kMaxOutStream = 128;
 
-#ifdef SRS_VERBOSE
+#ifdef SRS_DEBUG
 static void sctp_debug_log(const char* format, ...)
 {
 	char buffer[4096];
@@ -97,7 +97,7 @@ static void sctp_debug_log(const char* format, ...)
         } else {
             buffer[nb] = '\0';
         }
-        srs_verbose("%s", buffer);
+        srs_trace("%s", buffer);
     }
 
     va_end(ap);
@@ -161,13 +161,14 @@ SrsDataChannel::SrsDataChannel()
 
 SrsSctpGlobalEnv::SrsSctpGlobalEnv()
 {
-#ifdef SRS_VERBOSE
+#ifdef SRS_DEBUG
     usrsctp_init_nothreads(0, on_send_sctp_data, sctp_debug_log);
     usrsctp_sysctl_set_sctp_debug_on(SCTP_DEBUG_ALL);
 #else
     usrsctp_init_nothreads(0, on_send_sctp_data, NULL);
 #endif
 
+    // TODO: FIXME: Use one hourglass for performance issue.
     sctp_timer_ = new SrsHourGlass(this, 200 * SRS_UTIME_MILLISECONDS);
 
     srs_error_t err = srs_success;
@@ -175,6 +176,8 @@ SrsSctpGlobalEnv::SrsSctpGlobalEnv()
         srs_error_reset(err);
     }
 
+    // TODO: FIXME: Handle error.
+    // TODO: FIXME: Should not do it in constructor.
     if ((err = sctp_timer_->start()) != srs_success) {
         srs_error_reset(err);
     }
@@ -192,7 +195,7 @@ srs_error_t SrsSctpGlobalEnv::notify(int type, srs_utime_t interval, srs_utime_t
 
     srs_trace("sctp timer");
 
-	usrsctp_handle_timers(interval / 1000);
+    usrsctp_handle_timers(interval / 1000);
 
     return err;
 }
@@ -214,6 +217,7 @@ SrsSctp::SrsSctp(SrsRtcDtls* dtls)
         usrsctp_set_ulpinfo(sctp_socket, static_cast<void*>(this));
 
         int ret = usrsctp_set_non_blocking(sctp_socket, 1);
+        // TODO: FIXME: Handle error.
         if (ret < 0) {
             srs_warn("usrrsctp set non blocking failed, ret=%d", ret);
         }
@@ -222,12 +226,14 @@ SrsSctp::SrsSctp(SrsRtcDtls* dtls)
 
         av.assoc_value = SCTP_ENABLE_RESET_STREAM_REQ | SCTP_ENABLE_RESET_ASSOC_REQ | SCTP_ENABLE_CHANGE_ASSOC_REQ;
         ret = usrsctp_setsockopt(sctp_socket, IPPROTO_SCTP, SCTP_ENABLE_STREAM_RESET, &av, sizeof(av));
+        // TODO: FIXME: Handle error.
         if (ret < 0) {
             srs_warn("usrrsctp set SCTP_ENABLE_STREAM_RESET failed, ret=%d", ret);
         }
 
         uint32_t no_delay = 1;
         ret = usrsctp_setsockopt(sctp_socket, IPPROTO_SCTP, SCTP_NODELAY, &no_delay, sizeof(no_delay));
+        // TODO: FIXME: Handle error.
         if (ret < 0) {
             srs_warn("usrrsctp set SCTP_NODELAY failed, ret=%d", ret);
         }
@@ -239,6 +245,7 @@ SrsSctp::SrsSctp(SrsRtcDtls* dtls)
         for (size_t i = 0; i < sizeof(event_types) / sizeof(uint16_t); ++i)
         {
             event.se_type = event_types[i];
+            // TODO: FIXME: Handle error.
             ret = usrsctp_setsockopt(sctp_socket, IPPROTO_SCTP, SCTP_EVENT, &event, sizeof(event));
         	if (ret < 0) {
         	    srs_warn("usrrsctp set SCTP_NODELAY failed, ret=%d", ret);
@@ -251,6 +258,7 @@ SrsSctp::SrsSctp(SrsRtcDtls* dtls)
         initmsg.sinit_num_ostreams  = kMaxOutStream;
         initmsg.sinit_max_instreams = kMaxInSteam;
 
+        // TODO: FIXME: Handle error.
         ret = usrsctp_setsockopt(sctp_socket, IPPROTO_SCTP, SCTP_INITMSG, &initmsg, sizeof(initmsg));
         if (ret < 0) {
             srs_warn("usrrsctp set SCTP_INITMSG failed, ret=%d", ret);
@@ -262,6 +270,7 @@ SrsSctp::SrsSctp(SrsRtcDtls* dtls)
         sconn.sconn_port   = htons(kSctpPort);
         sconn.sconn_addr   = static_cast<void*>(this);
 
+        // TODO: FIXME: Handle error.
         ret = usrsctp_bind(sctp_socket, reinterpret_cast<struct sockaddr*>(&sconn), sizeof(sconn));
         if (ret < 0) {
             srs_warn("usrrsctp bind failed, ret=%d", ret);
@@ -288,8 +297,7 @@ srs_error_t SrsSctp::connect_to_class()
     // usrsctp_connect is no socket connect, it just bind usrsctp socket to this class.
     int ret = usrsctp_connect(sctp_socket, reinterpret_cast<struct sockaddr*>(&rconn), sizeof(rconn));
     if (ret < 0 && errno != EINPROGRESS) {
-        srs_warn("usrrsctp connect failed, ret=%d", ret);
-        return srs_error_new(ERROR_RTC_SCTP, "sctp connect");
+        return srs_error_new(ERROR_RTC_SCTP, "sctp connect, ret=%d, errno=%d", ret, errno);
     }
 
     struct sctp_paddrparams peer_addr_param;
@@ -300,8 +308,7 @@ srs_error_t SrsSctp::connect_to_class()
 
     ret = usrsctp_setsockopt(sctp_socket, IPPROTO_SCTP, SCTP_PEER_ADDR_PARAMS, &peer_addr_param, sizeof(peer_addr_param));
     if (ret < 0) {
-        srs_warn("usrrsctp set SCTP_PEER_ADDR_PARAMS failed, ret=%d", ret);
-        return srs_error_new(ERROR_RTC_SCTP, "sctp setsockopt");
+        return srs_error_new(ERROR_RTC_SCTP, "sctp setsockopt, ret=%d", ret);
     }
 
     srs_trace("usrsctp connect peer success.");
@@ -320,7 +327,7 @@ srs_error_t SrsSctp::on_sctp_event(const struct sctp_rcvinfo& rcv, void* data, s
 
     union sctp_notification* sctp_notify = reinterpret_cast<union sctp_notification*>(data);
     if (sctp_notify->sn_header.sn_length != len) {
-        return srs_error_new(ERROR_RTC_SCTP, "sctp notify header");
+        return srs_error_new(ERROR_RTC_SCTP, "sctp notify header, sn=%d, len=%d", sctp_notify->sn_header.sn_length, len);
     }
 
     srs_verbose("sctp event type=%d", (int)sctp_notify->sn_header.sn_type);
@@ -344,6 +351,7 @@ srs_error_t SrsSctp::on_sctp_event(const struct sctp_rcvinfo& rcv, void* data, s
             break;
         case SCTP_SEND_FAILED_EVENT: {
             const struct sctp_send_failed_event& ssfe = sctp_notify->sn_send_failed_event;
+            // TODO: FIXME: Return error or just print it?
             srs_error("SCTP_SEND_FAILED_EVENT, ppid=%u, sid=%u", ntohl(ssfe.ssfe_info.snd_ppid), ssfe.ssfe_info.snd_sid);
             break;
         }
@@ -396,7 +404,7 @@ srs_error_t SrsSctp::on_data_channel_control(const struct sctp_rcvinfo& rcv, Srs
     switch (msg_type) {
         case SrsDataChannelMessageTypeOpen: {
             if (data_channels_.count(rcv.rcv_sid)) {
-                return srs_error_new(ERROR_RTC_SCTP, "data channel already opened.");
+                return srs_error_new(ERROR_RTC_SCTP, "data channel %d already opened", rcv.rcv_sid);
             }
             /* 
              @see: https://tools.ietf.org/html/draft-ietf-rtcweb-data-protocol-08#section-5.1
@@ -458,7 +466,7 @@ srs_error_t SrsSctp::on_data_channel_control(const struct sctp_rcvinfo& rcv, Srs
             string label = "";
             if (label_length > 0) {
                 if (! stream->require(label_length)) {
-                    return srs_error_new(ERROR_RTC_SCTP, "sctp data length invalid");
+                    return srs_error_new(ERROR_RTC_SCTP, "label length %d", label_length);
                 }
 
                 label = stream->read_string(label_length);
@@ -466,7 +474,7 @@ srs_error_t SrsSctp::on_data_channel_control(const struct sctp_rcvinfo& rcv, Srs
 
             if (protocol_length > 0) {
                 if (! stream->require(protocol_length)) { 
-                    return srs_error_new(ERROR_RTC_SCTP, "sctp data length invalid");
+                    return srs_error_new(ERROR_RTC_SCTP, "protocol length %d", protocol_length);
                 }
             }
 
@@ -488,7 +496,7 @@ srs_error_t SrsSctp::on_data_channel_control(const struct sctp_rcvinfo& rcv, Srs
             break;
         }
         default: {
-            return srs_error_new(ERROR_RTC_SCTP, "unknown data channel control msg type");
+            return srs_error_new(ERROR_RTC_SCTP, "invalid msg_type=%d", msg_type);
         }
     }
 
@@ -499,8 +507,9 @@ srs_error_t SrsSctp::on_data_channel_msg(const struct sctp_rcvinfo& rcv, SrsBuff
 {
     srs_error_t err = srs_success;
 
-    // FIXME: echo test code.
-    if (true) {
+    // TODO: FIXME: echo test code.
+    if (false) {
+        // TODO: FIXME: Handle error.
         send(rcv.rcv_sid, stream->data(), stream->size());
     }
 
@@ -519,7 +528,7 @@ srs_error_t SrsSctp::send(const uint16_t sid, const char* buf, const int len)
     const SrsDataChannel& data_channel = iter->second;
 
     if (data_channel.status_ != DataChannelStatusOpen) {
-        return srs_error_new(ERROR_RTC_SCTP, "data channel %d no opened", sid);
+        return srs_error_new(ERROR_RTC_SCTP, "data channel %d no opened, status=%d", sid, data_channel.status_);
     }
 
     struct sctp_sendv_spa spa;
@@ -549,7 +558,10 @@ srs_error_t SrsSctp::send(const uint16_t sid, const char* buf, const int len)
         spa.sendv_prinfo.pr_value = 0;
     }
 
+    // Fake IO, which call on_send_sctp_data actually.
     int ret = usrsctp_sendv(sctp_socket, buf, len, NULL, 0, &spa, sizeof(spa), SCTP_SENDV_SPA, 0);
+
+    // If error, ret is set to -1, and the variable errno is then set appropriately.
     if (ret < 0) {
         return srs_error_new(ERROR_RTC_SCTP, "sctp notify header");
     }

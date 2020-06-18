@@ -288,6 +288,7 @@ srs_error_t SrsRtcDtls::on_dtls_application_data(const char* buf, const int nb_b
 #ifdef SRS_SCTP
     if (sctp_ == NULL) {
         sctp_ = new SrsSctp(this);
+        // TODO: FIXME: Handle error.
         sctp_->connect_to_class();
     }
 
@@ -301,16 +302,22 @@ srs_error_t SrsRtcDtls::send(const char* data, const int len)
 {
     srs_error_t err = srs_success;
 
-	int ret = SSL_write(dtls, data, len);
+    int ret = SSL_write(dtls, data, len);
+    
+    // TODO: FIXME: Handle error.
+    // Call SSL_get_error() with the return value ret to find out the reason.
+    // @see https://www.openssl.org/docs/man1.0.2/man3/SSL_write.html
     if (ret <= 0) {
         return srs_error_new(ERROR_RTC_DTLS, "SSL_write");
     }
 
     uint8_t dtls_send_buffer[4096];
 
+    // TODO: FIXME: Handle error.
     while (BIO_ctrl_pending(bio_out) > 0) {
         int dtls_send_bytes = BIO_read(bio_out, dtls_send_buffer, sizeof(dtls_send_buffer));
         if (dtls_send_bytes > 0) {
+            // TODO: FIXME: Handle error.
         	session_->sendonly_skt->sendto(dtls_send_buffer, dtls_send_bytes, 0);
         }
     }
