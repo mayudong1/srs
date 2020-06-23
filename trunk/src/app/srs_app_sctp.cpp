@@ -46,14 +46,14 @@ enum SrsDataChannelMessageType
     SrsDataChannelMessageTypeOpen = 3,
 };
 
-enum SrsDataChannelChannelType
+enum SrsDataChannelType
 {
-    SrsDataChannelChannelTypeReliable                       = 0x00,
-    SrsDataChannelChannelTypeReliableUnordered              = 0x80,
-    SrsDataChannelChannelTypePartialReliableRexmit          = 0x01,
-    SrsDataChannelChannelTypePartialReliableRexmitUnordered = 0x81,
-    SrsDataChannelChannelTypePartialReliableTimed           = 0x02,
-    SrsDataChannelChannelTypePartialReliableTimedUnordered  = 0x82,
+    SrsDataChannelTypeReliable                  = 0x00,
+    SrsDataChannelTypeReliableUnordered         = 0x80,
+    SrsDataChannelTypeUnreliableRexmit          = 0x01,
+    SrsDataChannelTypeUnreliableRexmitUnordered = 0x81,
+    SrsDataChannelTypeUnreliableTimed           = 0x02,
+    SrsDataChannelTypeUnreliableTimedUnordered  = 0x82,
 };
 
 enum SrsDataChannelPPID
@@ -193,21 +193,22 @@ srs_error_t SrsSctpGlobalEnv::notify(int type, srs_utime_t interval, srs_utime_t
 {
     srs_error_t err = srs_success;
 
-    srs_trace("sctp timer");
+    srs_trace("SCTP: timer every %ums, type=%u", srsu2ms(interval), type);
 
     usrsctp_handle_timers(interval / 1000);
 
     return err;
 }
 
-SrsSctpGlobalEnv* g_sctp_env = NULL;
+SrsSctpGlobalEnv* _srs_sctp_env = NULL;
 
 SrsSctp::SrsSctp(SrsRtcDtls* dtls)
 {
     rtc_dtls_ = dtls;
 
-    if (g_sctp_env == NULL) {
-        g_sctp_env = new SrsSctpGlobalEnv();
+    // TODO: FIXME: Should start in server init event.
+    if (_srs_sctp_env == NULL) {
+        _srs_sctp_env = new SrsSctpGlobalEnv();
     }
 
     if (true) {
@@ -311,7 +312,7 @@ srs_error_t SrsSctp::connect_to_class()
         return srs_error_new(ERROR_RTC_SCTP, "sctp setsockopt, ret=%d", ret);
     }
 
-    srs_trace("usrsctp connect peer success.");
+    srs_trace("SCTP: connect peer success.");
 
     return err;
 }
@@ -437,30 +438,12 @@ srs_error_t SrsSctp::on_data_channel_control(const struct sctp_rcvinfo& rcv, Srs
             uint16_t protocol_length = stream->read_2bytes();
 
             switch (channel_type) {
-                case SrsDataChannelChannelTypeReliable: {
-                    srs_trace("reliable channle");
-                    break;
-                }
-                case SrsDataChannelChannelTypeReliableUnordered: {
-                    srs_trace("unordered channle");
-                    break;
-                }
-                case SrsDataChannelChannelTypePartialReliableRexmit: {
-                    srs_trace("ordered channle with max rexmit %u", reliability_params);
-                    break;
-                }
-                case SrsDataChannelChannelTypePartialReliableRexmitUnordered: {
-                    srs_trace("unordered channle with max rexmit %u", reliability_params);
-                    break;
-                }
-                case SrsDataChannelChannelTypePartialReliableTimed: {
-                    srs_trace("ordered channle with max life time %u", reliability_params);
-                    break;
-                }
-                case SrsDataChannelChannelTypePartialReliableTimedUnordered: {
-                    srs_trace("unordered channle with max life time %u", reliability_params);
-                    break;
-                }
+                case SrsDataChannelTypeReliable:                    srs_trace("SCTP: reliable|ordered channel"); break;
+                case SrsDataChannelTypeReliableUnordered:           srs_trace("SCTP: reliable|unordered channel"); break;
+                case SrsDataChannelTypeUnreliableRexmit:            srs_trace("SCTP: unreliable|ordered|rtx(%u) channel", reliability_params); break;
+                case SrsDataChannelTypeUnreliableRexmitUnordered:   srs_trace("SCTP: unreliable|unordered|rtx(%u) channel", reliability_params); break;
+                case SrsDataChannelTypeUnreliableTimed:             srs_trace("SCTP: unreliable|ordered|life(%u) channel", reliability_params); break;
+                case SrsDataChannelTypeUnreliableTimedUnordered:    srs_trace("SCTP: unreliable|unordered|life(%u) channel", reliability_params); break;
             }
 
             string label = "";
@@ -507,8 +490,9 @@ srs_error_t SrsSctp::on_data_channel_msg(const struct sctp_rcvinfo& rcv, SrsBuff
 {
     srs_error_t err = srs_success;
 
+    srs_trace("SCTP: RECV %uB MSG: %.*s", stream->size(), stream->size(), stream->data());
     // TODO: FIXME: echo test code.
-    if (false) {
+    if (true) {
         // TODO: FIXME: Handle error.
         send(rcv.rcv_sid, stream->data(), stream->size());
     }
@@ -543,13 +527,13 @@ srs_error_t SrsSctp::send(const uint16_t sid, const char* buf, const int len)
         spa.sendv_sndinfo.snd_flags |= SCTP_UNORDERED;
     }
     
-    if (data_channel.channel_type_ == SrsDataChannelChannelTypePartialReliableRexmitUnordered ||
-        data_channel.channel_type_ == SrsDataChannelChannelTypePartialReliableRexmit) {
+    if (data_channel.channel_type_ == SrsDataChannelTypeUnreliableRexmitUnordered
+        || data_channel.channel_type_ == SrsDataChannelTypeUnreliableRexmit) {
         spa.sendv_prinfo.pr_policy = SCTP_PR_SCTP_RTX;
         spa.sendv_prinfo.pr_value = data_channel.reliability_params_;
         spa.sendv_flags |= SCTP_SEND_PRINFO_VALID;
-    } else if (data_channel.channel_type_ == SrsDataChannelChannelTypePartialReliableTimedUnordered ||
-               data_channel.channel_type_ == SrsDataChannelChannelTypePartialReliableTimed) {
+    } else if (data_channel.channel_type_ == SrsDataChannelTypeUnreliableTimedUnordered
+        || data_channel.channel_type_ == SrsDataChannelTypeUnreliableTimed) {
         spa.sendv_prinfo.pr_policy = SCTP_PR_SCTP_TTL;
         spa.sendv_prinfo.pr_value = data_channel.reliability_params_;
         spa.sendv_flags |= SCTP_SEND_PRINFO_VALID;
