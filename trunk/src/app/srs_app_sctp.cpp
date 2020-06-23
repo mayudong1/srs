@@ -188,7 +188,7 @@ srs_error_t SrsSctpGlobalEnv::notify(int type, srs_utime_t interval, srs_utime_t
 {
     srs_error_t err = srs_success;
 
-    srs_trace("SCTP: timer every %ums, type=%u", srsu2ms(interval), type);
+    srs_info("SCTP: timer every %ums, type=%u", srsu2ms(interval), type);
 
     usrsctp_handle_timers(interval / 1000);
 
@@ -486,6 +486,7 @@ srs_error_t SrsSctp::on_data_channel_msg(const struct sctp_rcvinfo& rcv, SrsBuff
     srs_error_t err = srs_success;
 
     srs_trace("SCTP: RECV %uB MSG: %.*s", stream->size(), stream->size(), stream->data());
+
     // TODO: FIXME: echo test code.
     if (true) {
         // TODO: FIXME: Handle error.

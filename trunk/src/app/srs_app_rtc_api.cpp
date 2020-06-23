@@ -217,7 +217,7 @@ srs_error_t SrsGoApiRtcPlay::do_serve_http(ISrsHttpResponseWriter* w, ISrsHttpMe
     res->set("sdp", SrsJsonAny::str(local_sdp_str.c_str()));
     res->set("sessionid", SrsJsonAny::str(session->username().c_str()));
 
-    srs_trace("RTC username=%s, offer=%dB, answer=%dB", session->username().c_str(),
+    srs_trace("RTC play username=%s, offer=%dB, answer=%dB", session->username().c_str(),
         remote_sdp_str.length(), local_sdp_str.length());
 
     return err;
@@ -520,7 +520,7 @@ srs_error_t SrsGoApiRtcDataChannel::do_serve_http(ISrsHttpResponseWriter* w, ISr
     // Whether keep sequence, overwrite the config for debugging each session.
     string sequence_keep = r->query_get("sequence_keep");
 
-    srs_trace("RTC play %s, api=%s, clientip=%s, app=%s, stream=%s, offer=%dB, eip=%s, encrypt=%s, sequence(startup=%s,delta=%s,keep=%s)",
+    srs_trace("RTC data %s, api=%s, clientip=%s, app=%s, stream=%s, offer=%dB, eip=%s, encrypt=%s, sequence(startup=%s,delta=%s,keep=%s)",
         streamurl.c_str(), api.c_str(), clientip.c_str(), app.c_str(), stream_name.c_str(), remote_sdp_str.length(), eip.c_str(), encrypt.c_str(),
         sequence_startup.c_str(), sequence_delta.c_str(), sequence_keep.c_str());
 
@@ -594,7 +594,7 @@ srs_error_t SrsGoApiRtcDataChannel::do_serve_http(ISrsHttpResponseWriter* w, ISr
     res->set("sdp", SrsJsonAny::str(local_sdp_str.c_str()));
     res->set("sessionid", SrsJsonAny::str(session->username().c_str()));
 
-    srs_trace("RTC username=%s, offer=%dB, answer=%dB", session->username().c_str(),
+    srs_trace("RTC data username=%s, offer=%dB, answer=%dB", session->username().c_str(),
         remote_sdp_str.length(), local_sdp_str.length());
 
     return err;
@@ -643,7 +643,7 @@ srs_error_t SrsGoApiRtcDataChannel::exchange_sdp(SrsRequest* req, const SrsSdp& 
     local_sdp.addrtype_        = "IP4";
     local_sdp.unicast_address_ = "0.0.0.0";
 
-    local_sdp.session_name_ = "SRSPlaySession";
+    local_sdp.session_name_ = "SRSDataSession";
 
     local_sdp.msid_semantic_ = "WMS";
     local_sdp.msids_.push_back(req->app + "/" + req->stream);
@@ -949,7 +949,7 @@ srs_error_t SrsGoApiRtcPublish::do_serve_http(ISrsHttpResponseWriter* w, ISrsHtt
     res->set("sdp", SrsJsonAny::str(local_sdp_str.c_str()));
     res->set("sessionid", SrsJsonAny::str(session->username().c_str()));
 
-    srs_trace("RTC username=%s, offer=%dB, answer=%dB", session->username().c_str(),
+    srs_trace("RTC publish username=%s, offer=%dB, answer=%dB", session->username().c_str(),
         remote_sdp_str.length(), local_sdp_str.length());
 
     return err;
