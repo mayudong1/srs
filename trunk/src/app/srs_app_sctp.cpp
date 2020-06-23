@@ -111,15 +111,15 @@ static int on_recv_sctp_data(struct socket* sock, union sctp_sockstore addr,
 
 	SrsSctp* sctp = reinterpret_cast<SrsSctp*>(ulp_inffo);
     if (flags & MSG_NOTIFICATION) {
-        if ((err = sctp->on_sctp_event(rcv, data, len)) != srs_success) {
-            srs_error("ignore error=%s", srs_error_desc(err).c_str());
-            srs_error_reset(err);
-        }
+        err = sctp->on_sctp_event(rcv, data, len);
     } else {
-        if ((err = sctp->on_sctp_data(rcv, data, len)) != srs_success) {
-            srs_error("ignore error=%s", srs_error_desc(err).c_str());
-            srs_error_reset(err);
-        }
+        err = sctp->on_sctp_data(rcv, data, len);
+    }
+
+    // TODO: FIXME: Handle error.
+    if (err != srs_success) {
+        srs_warn("SCTP: ignore error=%s", srs_error_desc(err).c_str());
+        srs_error_reset(err);
     }
 
 	return 1;
@@ -127,21 +127,16 @@ static int on_recv_sctp_data(struct socket* sock, union sctp_sockstore addr,
 
 static int on_send_sctp_data(void* addr, void* data, size_t len, uint8_t tos, uint8_t set_df)
 {
+    srs_error_t err = srs_success;
+
     SrsSctp* sctp = reinterpret_cast<SrsSctp*>(addr);
+    srs_assert(sctp);
 
-    if (sctp == NULL) {
-        return -1;
-    }
+    err = sctp->rtc_dtls_->send(reinterpret_cast<const char*>(data), len);
 
-    static int loss = 0;
-    ++loss;
-    if (loss % 10 == 0) {
-        srs_warn("loss manual");
-        return 0;
-    }
-    srs_error_t err = sctp->rtc_dtls_->send(reinterpret_cast<const char*>(data), len);
+    // TODO: FIXME: Handle error.
     if (err != srs_success) {
-        srs_error("ignore error=%s", srs_error_desc(err).c_str());
+        srs_warn("SCTP: ignore error=%s", srs_error_desc(err).c_str());
         srs_error_reset(err);
     }
 
