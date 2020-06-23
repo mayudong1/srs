@@ -52,8 +52,6 @@ private:
 #ifdef SRS_SCTP
 class SrsGoApiRtcDataChannel : public ISrsHttpHandler
 {
-public:
-    static uint32_t ssrc_num;
 private:
     SrsRtcServer* server_;
 public:

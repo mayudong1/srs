@@ -413,8 +413,6 @@ srs_error_t SrsGoApiRtcPlay::exchange_sdp(SrsRequest* req, const SrsSdp& remote_
 
 #ifdef SRS_SCTP
 
-uint32_t SrsGoApiRtcDataChannel::ssrc_num = 0;
-
 SrsGoApiRtcDataChannel::SrsGoApiRtcDataChannel(SrsRtcServer* server)
 {
     server_ = server;
@@ -513,16 +511,9 @@ srs_error_t SrsGoApiRtcDataChannel::do_serve_http(ISrsHttpResponseWriter* w, ISr
     string eip = r->query_get("eip");
     // For client to specifies whether encrypt by SRTP.
     string encrypt = r->query_get("encrypt");
-    // If keep_sequence is off, for client to specifies the startup sequence.
-    string sequence_startup = r->query_get("sequence_startup");
-    // If keep_sequence is on, for client to specifies the delta value for sequence.
-    string sequence_delta = r->query_get("sequence_delta");
-    // Whether keep sequence, overwrite the config for debugging each session.
-    string sequence_keep = r->query_get("sequence_keep");
 
-    srs_trace("RTC data %s, api=%s, clientip=%s, app=%s, stream=%s, offer=%dB, eip=%s, encrypt=%s, sequence(startup=%s,delta=%s,keep=%s)",
-        streamurl.c_str(), api.c_str(), clientip.c_str(), app.c_str(), stream_name.c_str(), remote_sdp_str.length(), eip.c_str(), encrypt.c_str(),
-        sequence_startup.c_str(), sequence_delta.c_str(), sequence_keep.c_str());
+    srs_trace("RTC data %s, api=%s, clientip=%s, app=%s, stream=%s, offer=%dB, eip=%s, encrypt=%s",
+        streamurl.c_str(), api.c_str(), clientip.c_str(), app.c_str(), stream_name.c_str(), remote_sdp_str.length(), eip.c_str(), encrypt.c_str());
 
     // TODO: FIXME: It seems remote_sdp doesn't represents the full SDP information.
     SrsSdp remote_sdp;
@@ -572,11 +563,6 @@ srs_error_t SrsGoApiRtcDataChannel::do_serve_http(ISrsHttpResponseWriter* w, ISr
         session->set_encrypt(encrypt != "false");
     }
 
-    // Set the optional parameters from client.
-    session->sequence_startup = sequence_startup;
-    session->sequence_delta = sequence_delta;
-    session->sequence_keep = sequence_keep;
-
     ostringstream os;
     if ((err = local_sdp.encode(os)) != srs_success) {
         return srs_error_wrap(err, "encode sdp");
@@ -613,18 +599,8 @@ srs_error_t SrsGoApiRtcDataChannel::check_remote_sdp(const SrsSdp& remote_sdp)
     }
 
     for (std::vector<SrsMediaDesc>::const_iterator iter = remote_sdp.media_descs_.begin(); iter != remote_sdp.media_descs_.end(); ++iter) {
-        if (iter->type_ != "audio" && iter->type_ != "video" && iter->type_ != "application") {
+        if (iter->type_ != "application") {
             return srs_error_new(ERROR_RTC_SDP_EXCHANGE, "unsupport media type=%s", iter->type_.c_str());
-        }
-
-        if (! iter->rtcp_mux_ && iter->type_ != "application") {
-            return srs_error_new(ERROR_RTC_SDP_EXCHANGE, "now media only support rtcp-mux");
-        }
-
-        for (std::vector<SrsMediaPayloadType>::const_iterator iter_media = iter->payload_types_.begin(); iter_media != iter->payload_types_.end(); ++iter_media) {
-            if (iter->sendonly_) {
-                return srs_error_new(ERROR_RTC_SDP_EXCHANGE, "play API only support sendrecv/recvonly");
-            }
         }
     }
 
@@ -650,102 +626,21 @@ srs_error_t SrsGoApiRtcDataChannel::exchange_sdp(SrsRequest* req, const SrsSdp& 
 
     local_sdp.group_policy_ = "BUNDLE";
 
-    bool nack_enabled = _srs_config->get_rtc_nack_enabled(req->vhost);
-
     for (size_t i = 0; i < remote_sdp.media_descs_.size(); ++i) {
         const SrsMediaDesc& remote_media_desc = remote_sdp.media_descs_[i];
-
-        if (remote_media_desc.is_audio()) {
-            local_sdp.media_descs_.push_back(SrsMediaDesc("audio"));
-        } else if (remote_media_desc.is_video()) {
-            local_sdp.media_descs_.push_back(SrsMediaDesc("video"));
-        } else if (remote_media_desc.is_application()) {
-            local_sdp.media_descs_.push_back(SrsMediaDesc("application"));
+        if (!remote_media_desc.is_application()) {
+            continue;
         }
+
+        local_sdp.media_descs_.push_back(SrsMediaDesc("application"));
 
         SrsMediaDesc& local_media_desc = local_sdp.media_descs_.back();
-
-        if (remote_media_desc.is_audio()) {
-            // TODO: check opus format specific param
-            std::vector<SrsMediaPayloadType> payloads = remote_media_desc.find_media_with_encoding_name("opus");
-            for (std::vector<SrsMediaPayloadType>::iterator iter = payloads.begin(); iter != payloads.end(); ++iter) {
-                local_media_desc.payload_types_.push_back(*iter);
-                SrsMediaPayloadType& payload_type = local_media_desc.payload_types_.back();
-
-                // TODO: FIXME: Only support some transport algorithms.
-                vector<string> rtcp_fb;
-                payload_type.rtcp_fb_.swap(rtcp_fb);
-                for (int j = 0; j < (int)rtcp_fb.size(); j++) {
-                    if (nack_enabled) {
-                        if (rtcp_fb.at(j) == "nack" || rtcp_fb.at(j) == "nack pli") {
-                            payload_type.rtcp_fb_.push_back(rtcp_fb.at(j));
-                        }
-                    }
-                }
-
-                // Only choose one match opus codec.
-                break;
-            }
-
-            if (local_media_desc.payload_types_.empty()) {
-                return srs_error_new(ERROR_RTC_SDP_EXCHANGE, "no found valid opus payload type");
-            }
-        } else if (remote_media_desc.is_video()) {
-            std::deque<SrsMediaPayloadType> backup_payloads;
-            std::vector<SrsMediaPayloadType> payloads = remote_media_desc.find_media_with_encoding_name("H264");
-            for (std::vector<SrsMediaPayloadType>::iterator iter = payloads.begin(); iter != payloads.end(); ++iter) {
-                if (iter->format_specific_param_.empty()) {
-                    backup_payloads.push_front(*iter);
-                    continue;
-                }
-                H264SpecificParam h264_param;
-                if ((err = srs_parse_h264_fmtp(iter->format_specific_param_, h264_param)) != srs_success) {
-                    srs_error_reset(err); continue;
-                }
-
-                // Try to pick the "best match" H.264 payload type.
-                if (h264_param.packetization_mode == "1" && h264_param.level_asymmerty_allow == "1") {
-                    local_media_desc.payload_types_.push_back(*iter);
-                    SrsMediaPayloadType& payload_type = local_media_desc.payload_types_.back();
-
-                    // TODO: FIXME: Only support some transport algorithms.
-                    vector<string> rtcp_fb;
-                    payload_type.rtcp_fb_.swap(rtcp_fb);
-                    for (int j = 0; j < (int)rtcp_fb.size(); j++) {
-                        if (nack_enabled) {
-                            if (rtcp_fb.at(j) == "nack" || rtcp_fb.at(j) == "nack pli") {
-                                payload_type.rtcp_fb_.push_back(rtcp_fb.at(j));
-                            }
-                        }
-                    }
-
-                    // Only choose first match H.264 payload type.
-                    break;
-                }
-
-                backup_payloads.push_back(*iter);
-            }
-
-            // Try my best to pick at least one media payload type.
-            if (local_media_desc.payload_types_.empty() && ! backup_payloads.empty()) {
-                srs_warn("choose backup H.264 payload type=%d", backup_payloads.front().payload_type_);
-                local_media_desc.payload_types_.push_back(backup_payloads.front());
-            }
-
-            if (local_media_desc.payload_types_.empty()) {
-                return srs_error_new(ERROR_RTC_SDP_EXCHANGE, "no found valid H.264 payload type");
-            }
-        }
 
         local_media_desc.mid_ = remote_media_desc.mid_;
         local_sdp.groups_.push_back(local_media_desc.mid_);
 
         local_media_desc.port_ = 9;
-        if (local_media_desc.is_audio() || local_media_desc.is_video()) {
-            local_media_desc.protos_ = "UDP/TLS/RTP/SAVPF";
-        } else {
-            local_media_desc.protos_ = "UDP/DTLS/SCTP";
-        }
+        local_media_desc.protos_ = "UDP/DTLS/SCTP";
 
         if (remote_media_desc.session_info_.setup_ == "active") {
             local_media_desc.session_info_.setup_ = "passive";
@@ -760,29 +655,8 @@ srs_error_t SrsGoApiRtcDataChannel::exchange_sdp(SrsRequest* req, const SrsSdp& 
             local_media_desc.session_info_.setup_ = "passive";
         }
 
-        if (remote_media_desc.sendonly_) {
-            local_media_desc.recvonly_ = true;
-        } else if (remote_media_desc.recvonly_) {
-            local_media_desc.sendonly_ = true;
-        } else if (remote_media_desc.sendrecv_) {
-            local_media_desc.sendrecv_ = true;
-        }
-
         local_media_desc.rtcp_mux_ = true;
         local_media_desc.rtcp_rsize_ = true;
-
-        // TODO: FIXME: Avoid SSRC collision.
-        if (!ssrc_num) {
-            ssrc_num = ::getpid() * 10000 + ::getpid() * 100 + ::getpid();
-        }
-
-        if (local_media_desc.sendonly_ || local_media_desc.sendrecv_) {
-            SrsSSRCInfo ssrc_info;
-            ssrc_info.ssrc_ = ++ssrc_num;
-            // TODO:use formated cname
-            ssrc_info.cname_ = "stream";
-            local_media_desc.ssrc_infos_.push_back(ssrc_info);
-        }
     }
 
     return err;
