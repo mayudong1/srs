@@ -107,18 +107,18 @@
                     var port = urlObject.port || 1985;
 
                     // @see https://github.com/rtcdn/rtcdn-draft
-                    var api = urlObject.user_query.play || '/rtc/v1/play/';
+                    var api = urlObject.user_query.data || '/rtc/v1/data/';
                     if (api.lastIndexOf('/') != api.length - 1) {
                         api += '/';
                     }
 
                     var url = schema + '//' + urlObject.server + ':' + port + api;
                     for (var key in urlObject.user_query) {
-                        if (key != 'api' && key != 'play') {
+                        if (key != 'api' && key != 'data') {
                             url += '&' + key + '=' + urlObject.user_query[key];
                         }
                     }
-                    // Replace /rtc/v1/play/&k=v to /rtc/v1/play/?k=v
+                    // Replace /rtc/v1/data/&k=v to /rtc/v1/data/?k=v
                     url = url.replace(api + '&', api + '?');
 
                     // @see https://github.com/rtcdn/rtcdn-draft
