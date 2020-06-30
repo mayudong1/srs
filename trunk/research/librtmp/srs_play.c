@@ -62,7 +62,10 @@ int main(int argc, char** argv)
     }
     srs_human_trace("play stream success");
     
-    char buffer[1024];
+    char buffer[10240];
+    int64_t start = srs_utils_time_ms();
+    int64_t recv_data_size = 0;
+    int recv_video_frames = 0;
     for (;;) {
         int size;
         char type;
@@ -77,6 +80,23 @@ int main(int argc, char** argv)
             goto rtmp_destroy;
         }
         srs_human_trace("%s", buffer);
+        
+        recv_data_size += size;
+        if(type == SRS_RTMP_TYPE_VIDEO){
+            recv_video_frames++;
+        }
+        int64_t cur_timestamp = srs_utils_time_ms();
+        int64_t diff = cur_timestamp - start;
+        if(diff > 5000000){
+            float diff_sec = (float)diff / 1000000.0;
+            float bitrate = (recv_data_size * 8) / diff_sec;
+            bitrate = (float)bitrate / 1000;
+            float fps = recv_video_frames / diff_sec;
+            srs_human_trace("in last 5 seconds, bitrate = %.02fkbps, fps = %.02f", bitrate, fps);
+            recv_data_size = 0;
+            recv_video_frames = 0;
+            start = cur_timestamp;
+        }
         
         free(data);
     }

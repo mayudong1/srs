@@ -155,6 +155,19 @@ bool SrsFlvVideo::h264(char* data, int size)
     return codec_id == SrsVideoCodecIdAVC;
 }
 
+bool SrsFlvVideo::hevc(char* data, int size)
+{
+    // 1bytes required.
+    if (size < 1) {
+        return false;
+    }
+    
+    char codec_id = data[0];
+    codec_id = codec_id & 0x0F;
+    
+    return codec_id == SrsVideoCodecIdHEVC;
+}
+
 bool SrsFlvVideo::acceptable(char* data, int size)
 {
     // 1bytes required.

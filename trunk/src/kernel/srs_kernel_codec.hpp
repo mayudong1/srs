@@ -263,6 +263,10 @@ public:
      */
     static bool h264(char* data, int size);
     /**
+     * check codec hevc.
+     */
+    static bool hevc(char* data, int size);
+    /**
      * check the video RTMP/flv header info,
      * @return true if video RTMP/flv header is ok.
      * @remark all type of audio is possible, no need to check audio.

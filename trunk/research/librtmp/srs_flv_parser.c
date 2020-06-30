@@ -141,7 +141,7 @@ int parse_flv(srs_flv_t flv)
     }
     
     srs_human_trace("start parse flv");
-    char buffer[1024];
+    char buffer[10240];
     for (;;) {
         offset = srs_flv_tellg(flv);
         

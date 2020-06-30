@@ -2246,7 +2246,7 @@ int srs_utils_parse_timestamp(
         return ret;
     }
     
-    if (!SrsFlvVideo::h264(data, size)) {
+    if (!SrsFlvVideo::h264(data, size) && !SrsFlvVideo::hevc(data, size)) {
         return ERROR_FLV_INVALID_VIDEO_TAG;
     }
     
@@ -2314,7 +2314,7 @@ char srs_utils_flv_video_avc_packet_type(char* data, int size)
         return -1;
     }
     
-    if (!SrsFlvVideo::h264(data, size)) {
+    if (!SrsFlvVideo::h264(data, size) && !SrsFlvVideo::hevc(data, size)) {
         return -1;
     }
     
@@ -2333,7 +2333,7 @@ char srs_utils_flv_video_frame_type(char* data, int size)
         return -1;
     }
     
-    if (!SrsFlvVideo::h264(data, size)) {
+    if (!SrsFlvVideo::h264(data, size) && !SrsFlvVideo::hevc(data, size)) {
         return -1;
     }
     
@@ -2460,6 +2460,7 @@ const char* srs_human_flv_video_codec_id2string(char codec_id)
     static const char* vp6_alpha = "VP6Alpha";
     static const char* screen2 = "Screen2";
     static const char* h264 = "H.264";
+    static const char* hevc = "HEVC";
     static const char* unknown = "Unknown";
     
     switch (codec_id) {
@@ -2469,6 +2470,7 @@ const char* srs_human_flv_video_codec_id2string(char codec_id)
         case 5: return vp6_alpha;
         case 6: return screen2;
         case 7: return h264;
+        case 12: return hevc;
         default: return unknown;
     }
     
@@ -2643,6 +2645,201 @@ const char* srs_human_flv_audio_aac_packet_type2string(char aac_packet_type)
     return unknown;
 }
 
+
+static char* H264_NALU_NAME[] = {
+    "Unkown",   //0
+    "P/B",      //1
+    "P/B",      //2
+    "P/B",      //3
+    "P/B",      //4
+    "I",        //5
+    "SEI",      //6
+    "SPS",      //7
+    "PPS",      //8
+    "AUD",      //9
+    "EOS",      //10
+    "EOB",      //11
+};
+
+static char* HEVC_NALU_NAME[] = {
+    "TRAIL_N", //0
+    "TRAIL_R", //1
+    "TSA_N", //2
+    "TSA_R", //3
+    "STSA_N", //4
+    "STSA_R", //5
+    "RADL_N", //6
+    "RADL_R", //7
+    "RASL_N", //8
+    "RASL_R", //9
+    "RSV_VCL_N10", //10
+    "RSV_VCL_R11", //11
+    "RSV_VCL_N12", //12
+    "RSV_VCL_R13", //13
+    "RSV_VCL_N14", //14
+    "RSV_VCL_R15", //15
+    "BLA_W_LP", //16
+    "BLA_W_RADL", //17
+    "BLA_N_LP", //18
+    "IDR_W_RADL", //19
+    "IDR_N_LP", //20
+    "CRA_NUT", //21
+    "RSV_IRAP_VCL22", //22
+    "RSV_IRAP_VCL23", //23
+    "RSV_VCL24", //24
+    "RSV_VCL25", //25
+    "RSV_VCL26", //26
+    "RSV_VCL27", //27
+    "RSV_VCL28", //28
+    "RSV_VCL29", //29
+    "RSV_VCL30", //30
+    "RSV_VCL31", //31
+    "VPS_NUT", //32
+    "SPS_NUT", //33
+    "PPS_NUT", //34
+    "AUD_NUT", //35
+    "EOS_NUT", //36
+    "EOB_NUT", //37
+    "FD_NUT", //38
+    "PREFIX_SEI_NUT", //39
+    "SUFFIX_SEI_NUT", //40
+};
+
+static char* get_nalu_name(int codec_id, int nalu_type){
+    if(codec_id == SrsVideoCodecIdAVC){
+        if(nalu_type > sizeof(H264_NALU_NAME) / sizeof(H264_NALU_NAME[0]))
+            return "Unkown";
+        else
+            return H264_NALU_NAME[nalu_type];
+    } else if(codec_id == SrsVideoCodecIdHEVC){
+        if(nalu_type > sizeof(HEVC_NALU_NAME) / sizeof(HEVC_NALU_NAME[0]))
+            return "Unkown";
+        else
+            return HEVC_NALU_NAME[nalu_type];
+    }
+    return "Unkown";
+}
+
+enum H264_NALU_TYPE{
+    H264_NALU_IDR = 5,
+    H264_NALU_SEI = 6,
+    H264_NALU_SPS = 7,
+    H264_NALU_PPS = 8,
+    H264_NALU_KWAI = 31,
+};
+
+enum HEVC_NALU_TYPE{
+    HEVC_NALU_VPS = 32,
+    HEVC_NALU_SPS = 33,
+    HEVC_NALU_PPS = 34,
+
+    HEVC_NALU_PREFIX_SEI = 39,
+    HEVC_NALU_SUFFIX_SEI = 40,
+    HEVC_NALU_KWAI = 63,
+};
+
+
+static std::string human_h2645_nalu(char* data, int size)
+{
+    std::string str;
+    std::string nalu_list = "NALU: ";
+    std::string nalu_data;
+    int codec_id = srs_utils_flv_video_codec_id(data, size);
+    int avc_packet_type = srs_utils_flv_video_avc_packet_type(data, size);
+    if(codec_id != SrsVideoCodecIdAVC && codec_id != SrsVideoCodecIdHEVC){
+        return "";
+    }
+    if(avc_packet_type != 1){
+        return "";
+    }
+
+    int left_size = size - 5;
+    uint8_t* p = (uint8_t*)&data[5];
+    while(left_size > 0){
+        if(left_size < 4)
+            break;
+        uint32_t len = p[0] << 24 | p[1] << 16 | p[2] << 8 | p[3];
+        left_size -= 4;
+        p += 4;
+        if(len == 1){
+            srs_human_trace("nalu is annexb format, this may be incorrect.");
+            break;
+        }
+        if(len > left_size){
+            break;
+        }
+        int nalu_type = p[0];
+        p++;
+        if(codec_id == SrsVideoCodecIdAVC){
+            nalu_type = nalu_type & 0x1f;
+            int nalu_len = len-1;
+            char tmp[64];
+            snprintf(tmp, 64, "%s(%d) ", get_nalu_name(codec_id, nalu_type), nalu_type);
+            nalu_list += tmp;
+            if(nalu_type == HEVC_NALU_SPS 
+                || nalu_type == H264_NALU_PPS 
+                || nalu_type == H264_NALU_SEI
+                || nalu_type == H264_NALU_KWAI){
+                nalu_data += get_nalu_name(codec_id, nalu_type);
+                nalu_data += ":";
+                for(int i=0;i<nalu_len;i++){
+                    char d[10];
+                    snprintf(d, 10, "%02X ", p[i+1]);
+                    nalu_data += d;
+                }
+                nalu_data += "\n";
+            }
+            else{
+                int tmp_len = nalu_len > 16 ? 16: nalu_len;
+                nalu_data += get_nalu_name(codec_id, nalu_type);
+                nalu_data += ":";
+                for(int i=0;i<tmp_len;i++){
+                    char d[10];
+                    snprintf(d, 10, "%02X ", p[i+1]);
+                    nalu_data += d;
+                }
+                nalu_data += "\n";   
+            }
+        }else if(codec_id == SrsVideoCodecIdHEVC){
+            nalu_type = ((nalu_type & 0x7e) >> 1);
+            int nalu_len = len-2;
+            char tmp[64];
+            snprintf(tmp, 64, "%s(%d) ", get_nalu_name(codec_id, nalu_type), nalu_type);
+            nalu_list += tmp;
+            if(nalu_type == HEVC_NALU_VPS 
+                || nalu_type == HEVC_NALU_SPS 
+                || nalu_type == HEVC_NALU_PPS
+                || nalu_type == HEVC_NALU_SUFFIX_SEI
+                || nalu_type == HEVC_NALU_PREFIX_SEI
+                || nalu_type == HEVC_NALU_KWAI){
+                nalu_data += get_nalu_name(codec_id, nalu_type);
+                nalu_data += ":";
+                for(int i=0;i<nalu_len;i++){
+                    char d[10];
+                    snprintf(d, 10, "%02X ", p[i]);
+                    nalu_data += d;
+                }
+                nalu_data += "\n";
+            }
+            else{
+                int tmp_len = nalu_len > 16 ? 16: nalu_len;
+                nalu_data += get_nalu_name(codec_id, nalu_type);
+                nalu_data += ":";
+                for(int i=0;i<tmp_len;i++){
+                    char d[10];
+                    snprintf(d, 10, "%02X ", p[i]);
+                    nalu_data += d;
+                }
+                nalu_data += "\n";   
+            }
+        }
+        p += (len-1);
+        left_size -= len;
+    }
+    str = nalu_list + "\n" + nalu_data;
+    return str;
+}
+
 int srs_human_format_rtmp_packet(char* buffer, int nb_buffer, char type, uint32_t timestamp, char* data, int size)
 {
     int ret = ERROR_SUCCESS;
@@ -2667,11 +2864,12 @@ int srs_human_format_rtmp_packet(char* buffer, int nb_buffer, char type, uint32_
     }
     
     if (type == SRS_RTMP_TYPE_VIDEO) {
-        snprintf(buffer, nb_buffer, "Video packet type=%s, dts=%d, pts=%d, size=%d, %s(%s,%s), (%s)",
+        snprintf(buffer, nb_buffer, "Video packet type=%s, dts=%d, pts=%d, size=%d, %s(%s,%s), %s\n(%s)",
             srs_human_flv_tag_type2string(type), timestamp, pts, size,
             srs_human_flv_video_codec_id2string(srs_utils_flv_video_codec_id(data, size)),
             srs_human_flv_video_avc_packet_type2string(srs_utils_flv_video_avc_packet_type(data, size)),
             srs_human_flv_video_frame_type2string(srs_utils_flv_video_frame_type(data, size)),
+            human_h2645_nalu(data, size).c_str(),
             sbytes);
     } else if (type == SRS_RTMP_TYPE_AUDIO) {
         snprintf(buffer, nb_buffer, "Audio packet type=%s, dts=%d, pts=%d, size=%d, %s(%s,%s,%s,%s), (%s)",
