@@ -2773,7 +2773,6 @@ static std::string human_h2645_nalu(char* data, int size)
             }
             len = tmp_nalu_len;
             srs_human_trace("nalu is annexb format, this may be incorrect.");
-            break;
         }
         if(len > left_size){
             break;
