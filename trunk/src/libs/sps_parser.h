@@ -1,3 +1,4 @@
+
 /*
  * h264_sps_parser.h
  *
@@ -342,4 +343,99 @@ static void get_resolution_from_sps(uint8_t* sps, uint32_t sps_size, int* width,
     *height = ((2 - sps_info.frame_mbs_only_flag) * (sps_info.pic_height_in_map_units_minus1 + 1) * 16) - sps_info.frame_crop_top_offset * 2 - sps_info.frame_crop_bottom_offset * 2;
     
 }
+
+
+////////////////////////////////////////////////
+
+#define HEVC_MAX_SUB_LAYERS 7
+
+typedef struct 
+{
+    int chroma_format_idc;
+    int separate_colour_plane_flag;
+    uint64_t pic_width_in_luma_samples;
+    uint64_t pic_height_in_luma_samples;
+    int conformance_window_flag;
+    uint64_t conf_win_left_offset;
+    uint64_t conf_win_right_offset;
+    uint64_t conf_win_top_offset;
+    uint64_t conf_win_bottom_offset;
+}h265_sps_info_struct;
+
+static void parseh265_sps(h265_sps_info_struct* sps_info, uint8_t* sps_data, uint32_t sps_size)
+{
+    if(sps_info == NULL)
+        return;
+    memset(sps_info, 0, sizeof(h265_sps_info_struct));
+    
+    nal_bitstream bs;
+    nal_bs_init(&bs, sps_data, sps_size);
+    
+    nal_bs_read(&bs, 4); //sps_video_parameter_set_id
+    int sps_max_sub_layers_minus1 = nal_bs_read(&bs, 3); //sps_max_sub_layers_minus1
+    nal_bs_read(&bs, 1); //sps_temporal_id_nesting_flag
+    
+
+    uint8_t sub_layer_profile_present_flag[HEVC_MAX_SUB_LAYERS];
+    uint8_t sub_layer_level_present_flag[HEVC_MAX_SUB_LAYERS];
+    nal_bs_read(&bs, 2);
+    nal_bs_read(&bs, 1);
+    nal_bs_read(&bs, 5);
+    nal_bs_read(&bs, 32);
+    nal_bs_read(&bs, 48);
+    nal_bs_read(&bs, 8);
+    for(int i=0;i<sps_max_sub_layers_minus1;i++){
+        sub_layer_profile_present_flag[i] = nal_bs_read(&bs, 1);
+        sub_layer_level_present_flag[i]   = nal_bs_read(&bs, 1);
+    }
+    if (sps_max_sub_layers_minus1 > 0){
+        for (int i = sps_max_sub_layers_minus1; i < 8; i++)
+            nal_bs_read(&bs, 2); // reserved_zero_2bits[i]
+    }
+    for (int i = 0; i < sps_max_sub_layers_minus1; i++) {
+        if (sub_layer_profile_present_flag[i]) {
+            nal_bs_read(&bs, 32);
+            nal_bs_read(&bs, 32);
+            nal_bs_read(&bs, 24);
+        }
+        if (sub_layer_level_present_flag[i]){
+            nal_bs_read(&bs, 8);
+        }
+    }
+
+    nal_bs_read_ue(&bs); //sps_seq_parameter_set_id
+    sps_info->chroma_format_idc = nal_bs_read_ue(&bs);
+    if (sps_info->chroma_format_idc == 3){
+        sps_info->separate_colour_plane_flag = nal_bs_read(&bs, 1);
+    }
+
+    sps_info->pic_width_in_luma_samples = nal_bs_read_ue(&bs);
+    sps_info->pic_height_in_luma_samples = nal_bs_read_ue(&bs);
+    sps_info->conformance_window_flag = nal_bs_read(&bs, 1);
+    if(sps_info->conformance_window_flag){
+        sps_info->conf_win_left_offset = nal_bs_read_ue(&bs);
+        sps_info->conf_win_right_offset = nal_bs_read_ue(&bs);
+        sps_info->conf_win_top_offset = nal_bs_read_ue(&bs);
+        sps_info->conf_win_bottom_offset = nal_bs_read_ue(&bs);
+    }
+}
+
+static void get_resolution_from_h265_sps(uint8_t* sps, uint32_t sps_size, int* width, int* height)
+{
+    h265_sps_info_struct sps_info = {0};
+    
+    parseh265_sps(&sps_info, sps, sps_size);
+    
+    int w = sps_info.pic_width_in_luma_samples;
+    int h = sps_info.pic_height_in_luma_samples;
+    int sub_width_c = ((1==sps_info.chroma_format_idc)||(2 == sps_info.chroma_format_idc))&&(0 == sps_info.separate_colour_plane_flag)?2:1;
+    int sub_height_c = (1==sps_info.chroma_format_idc)&&(0 == sps_info.separate_colour_plane_flag)?2:1;
+
+    w -= (sub_width_c * sps_info.conf_win_right_offset + sub_width_c * sps_info.conf_win_left_offset);
+    h -=  (sub_height_c * sps_info.conf_win_bottom_offset + sub_height_c * sps_info.conf_win_top_offset);
+    
+    *width = w;
+    *height = h;
+}
+
 #endif

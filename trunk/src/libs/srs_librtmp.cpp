@@ -2768,9 +2768,35 @@ static std::string human_h2645_nalu(char* data, int size)
                 return str;
             }
         }
-        else{
-            return "";
+        else if(codec_id == SrsVideoCodecIdHEVC){
+            uint8_t* p = (uint8_t*)&data[5];
+            if(p[0] != 1)
+                return "";
+            int numberOfArray = p[22];
+            printf("number of array = %d\n",numberOfArray);
+            uint8_t* pData = (uint8_t*)&p[23];
+            for(int i=0;i<numberOfArray;i++){
+                int nalu_type = pData[0] & 0x3f;
+                int count = pData[1] << 8 | pData[2];
+                pData += 3;
+                for(int j=0;j<count;j++){
+                    int nalu_len = pData[0] << 8 | pData[1];
+                    pData += 2;
+                    if(nalu_type == HEVC_NALU_SPS){
+                        int width = 0;
+                        int height = 0;
+                        get_resolution_from_h265_sps(pData+2, nalu_len-2, &width, &height);
+                        char tmp[128];
+                        snprintf(tmp, 128, "(resolution:%dx%d) ", width, height);
+                        str = tmp;
+                        return str;
+                    }
+                    pData += nalu_len;
+                }
+            }
         }
+        else
+            return "";
     }
     else if(avc_packet_type != 1){
         return "";
@@ -2816,7 +2842,7 @@ static std::string human_h2645_nalu(char* data, int size)
                 if(nalu_type == H264_NALU_SPS){
                     int width = 0;
                     int height = 0;
-                    get_resolution_from_sps(p+1, nalu_len, &width, &height);
+                    get_resolution_from_sps(p, nalu_len, &width, &height);
                     char res[128];
                     snprintf(res, 128, "(resolution:%dx%d)", width, height);
                     nalu_data += res;
@@ -2853,6 +2879,14 @@ static std::string human_h2645_nalu(char* data, int size)
                 || nalu_type == HEVC_NALU_PREFIX_SEI
                 || nalu_type == HEVC_NALU_KWAI){
                 nalu_data += get_nalu_name(codec_id, nalu_type);
+                if(nalu_type == HEVC_NALU_SPS){
+                    int width = 0;
+                    int height = 0;
+                    get_resolution_from_h265_sps(p+1, nalu_len, &width, &height);
+                    char res[128];
+                    snprintf(res, 128, "(resolution:%dx%d)", width, height);
+                    nalu_data += res;
+                }
                 nalu_data += ":";
                 for(int i=0;i<nalu_len;i++){
                     char d[10];
