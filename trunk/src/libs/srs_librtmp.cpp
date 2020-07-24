@@ -51,6 +51,7 @@ using namespace std;
 #include <srs_lib_bandwidth.hpp>
 #include <srs_raw_avc.hpp>
 #include <srs_kernel_mp4.hpp>
+#include <sps_parser.h>
 
 // kernel module.
 ISrsLog* _srs_log = new ISrsLog();
@@ -2749,7 +2750,29 @@ static std::string human_h2645_nalu(char* data, int size)
     if(codec_id != SrsVideoCodecIdAVC && codec_id != SrsVideoCodecIdHEVC){
         return "";
     }
-    if(avc_packet_type != 1){
+    if(avc_packet_type == 0){
+        if(codec_id == SrsVideoCodecIdAVC){
+            uint8_t* p = (uint8_t*)&data[5];
+            if(p[0] != 1)
+                return "";
+            int sps_count = p[5] & 0x1f;
+            if(sps_count >= 1){
+                int len = (p[6] << 8 | p[7]) - 1;
+                uint8_t* sps_data = (uint8_t*)&p[9];
+                int width = 0;
+                int height = 0;
+                get_resolution_from_sps(sps_data, len, &width, &height);
+                char tmp[128];
+                snprintf(tmp, 128, "(resolution:%dx%d) ", width, height);
+                str = tmp;
+                return str;
+            }
+        }
+        else{
+            return "";
+        }
+    }
+    else if(avc_packet_type != 1){
         return "";
     }
 
@@ -2785,11 +2808,19 @@ static std::string human_h2645_nalu(char* data, int size)
             char tmp[64];
             snprintf(tmp, 64, "%s(%d) ", get_nalu_name(codec_id, nalu_type), nalu_type);
             nalu_list += tmp;
-            if(nalu_type == HEVC_NALU_SPS 
-                || nalu_type == H264_NALU_PPS 
+            if(nalu_type == H264_NALU_SPS
+                || nalu_type == H264_NALU_PPS
                 || nalu_type == H264_NALU_SEI
                 || nalu_type == H264_NALU_KWAI){
                 nalu_data += get_nalu_name(codec_id, nalu_type);
+                if(nalu_type == H264_NALU_SPS){
+                    int width = 0;
+                    int height = 0;
+                    get_resolution_from_sps(p+1, nalu_len, &width, &height);
+                    char res[128];
+                    snprintf(res, 128, "(resolution:%dx%d)", width, height);
+                    nalu_data += res;
+                }
                 nalu_data += ":";
                 for(int i=0;i<nalu_len;i++){
                     char d[10];
@@ -2807,7 +2838,7 @@ static std::string human_h2645_nalu(char* data, int size)
                     snprintf(d, 10, "%02X ", p[i+1]);
                     nalu_data += d;
                 }
-                nalu_data += "\n";   
+                nalu_data += "\n";
             }
         }else if(codec_id == SrsVideoCodecIdHEVC){
             nalu_type = ((nalu_type & 0x7e) >> 1);
