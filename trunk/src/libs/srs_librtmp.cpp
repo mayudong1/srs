@@ -2751,6 +2751,11 @@ static std::string human_h2645_nalu(char* data, int size)
         return "";
     }
     if(avc_packet_type == 0){
+        for(int i=5;i<size;i++){
+            char d[10];
+            snprintf(d, 10, "%02X ", (uint8_t)data[i]);
+            nalu_data += d;
+        }
         if(codec_id == SrsVideoCodecIdAVC){
             uint8_t* p = (uint8_t*)&data[5];
             if(p[0] != 1)
@@ -2765,7 +2770,7 @@ static std::string human_h2645_nalu(char* data, int size)
                 char tmp[128];
                 snprintf(tmp, 128, "(resolution:%dx%d) ", width, height);
                 str = tmp;
-                return str;
+                return str + "sequence header:" + nalu_data;
             }
         }
         else if(codec_id == SrsVideoCodecIdHEVC){
@@ -2788,7 +2793,7 @@ static std::string human_h2645_nalu(char* data, int size)
                         char tmp[128];
                         snprintf(tmp, 128, "(resolution:%dx%d) ", width, height);
                         str = tmp;
-                        return str;
+                        return str + "sequence header:" + nalu_data;
                     }
                     pData += nalu_len;
                 }
@@ -2849,7 +2854,7 @@ static std::string human_h2645_nalu(char* data, int size)
                 nalu_data += ":";
                 for(int i=0;i<nalu_len;i++){
                     char d[10];
-                    snprintf(d, 10, "%02X ", p[i+1]);
+                    snprintf(d, 10, "%02X ", p[i]);
                     nalu_data += d;
                 }
                 nalu_data += " ";
